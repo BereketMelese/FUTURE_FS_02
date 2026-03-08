@@ -1,6 +1,12 @@
 import express from "express";
 import { body } from "express-validator";
-import { login, register } from "../controllers/authController.js";
+import {
+  checkUserExists,
+  getCurrentUser,
+  login,
+  register,
+} from "../controllers/authController.js";
+import authMiddleware from "../middleware/auth.js";
 
 const router = express.Router();
 /**
@@ -55,6 +61,46 @@ const router = express.Router();
  *       200:
  *         description: Login successful
  */
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     summary: Get current authenticated user
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user fetched
+ *       401:
+ *         description: Unauthorized
+ */
+/**
+ * @swagger
+ * /api/auth/check-user:
+ *   post:
+ *     summary: Check whether a user exists by email or username
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               username:
+ *                 type: string
+ *             example:
+ *               email: user@example.com
+ *     responses:
+ *       200:
+ *         description: User existence check completed
+ *       400:
+ *         description: Invalid input
+ */
 const registerValidation = [
   body("email")
     .notEmpty()
@@ -77,7 +123,26 @@ const loginValidation = [
   body("password").notEmpty().withMessage("Password is required"),
 ];
 
+const checkUserValidation = [
+  body("email").optional().isEmail().withMessage("Invalid email format"),
+  body("username")
+    .optional()
+    .isString()
+    .withMessage("Username must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Username cannot be empty"),
+  body().custom((value) => {
+    if (!value.email && !value.username) {
+      throw new Error("Email or username is required");
+    }
+    return true;
+  }),
+];
+
 router.post("/register", registerValidation, register);
 router.post("/login", loginValidation, login);
+router.get("/me", authMiddleware, getCurrentUser);
+router.post("/check-user", checkUserValidation, checkUserExists);
 
 export default router;

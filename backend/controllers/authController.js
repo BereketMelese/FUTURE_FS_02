@@ -1,7 +1,6 @@
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
 import { validationResult } from "express-validator";
 
 const register = async (req, res) => {
@@ -111,4 +110,67 @@ const login = async (req, res) => {
   }
 };
 
-export { register, login };
+const checkUserExists = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      errors: errors.array(),
+    });
+  }
+
+  try {
+    const { email, username } = req.body;
+
+    const query = {};
+    if (email) {
+      query.email = email;
+    }
+    if (username) {
+      query.username = username;
+    }
+
+    const user = await User.exists(query);
+
+    return res.json({
+      success: true,
+      exists: Boolean(user),
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+const getCurrentUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.user).select("-password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+export { register, login, checkUserExists, getCurrentUser };
