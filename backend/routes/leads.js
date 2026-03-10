@@ -6,6 +6,7 @@ import {
   getLead,
   createLead,
   updateLead,
+  getLeadStatusOptions,
   addNote,
   deleteLead,
 } from "../controllers/LeadControllers.js";
@@ -23,6 +24,10 @@ const leadValidation = [
     .optional()
     .isIn(["Website", "Referral", "Social Media", "Email", "Other"])
     .withMessage("Invalid source value"),
+  body("followUpdate")
+    .optional({ nullable: true, checkFalsy: true })
+    .isISO8601()
+    .withMessage("followUpdate must be a valid ISO date"),
 ];
 
 /**
@@ -97,6 +102,9 @@ const leadValidation = [
  *                 type: string
  *               source:
  *                 type: string
+ *               followUpdate:
+ *                 type: string
+ *                 format: date-time
  *     responses:
  *       201:
  *         description: Lead created
@@ -126,6 +134,9 @@ const leadValidation = [
  *               status:
  *                 type: string
  *                 enum: [New, Contacted, Qualified, Converted, Lost]
+ *               followUpdate:
+ *                 type: string
+ *                 format: date-time
  *     responses:
  *       200:
  *         description: Status updated
@@ -179,6 +190,7 @@ const leadValidation = [
  */
 router.use(auth);
 router.get("/", getLeads);
+router.get("/status-options/:status", getLeadStatusOptions);
 
 router.get("/:id", getLead);
 router.post("/", leadValidation, createLead);

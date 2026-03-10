@@ -25,7 +25,10 @@ const LeadDetail = ({
   lead,
   onClose,
   onStatusChange,
+  statusOptions = [],
+  onFollowUpChange,
   onAddNote,
+  followUpSubmitting = false,
   noteSubmitting = false,
 }) => {
   const [noteText, setNoteText] = useState("");
@@ -61,6 +64,7 @@ const LeadDetail = ({
 
   const notes = lead.notes || [];
   const badgeTone = statusTone[lead.status] || "bg-slate-100 text-slate-700";
+  const isLost = lead.status === "Lost";
 
   return (
     <section className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm">
@@ -111,14 +115,16 @@ const LeadDetail = ({
             {formatDate(lead.createdAt)}
           </p>
         </div>
-        <div className="rounded-2xl bg-slate-50 px-4 py-3">
-          <p className="text-xs uppercase tracking-[0.14em] text-slate-400">
-            Follow-up
-          </p>
-          <p className="mt-1 font-semibold text-slate-800">
-            {formatDate(lead.followUpdate)}
-          </p>
-        </div>
+        {!isLost && (
+          <div className="rounded-2xl bg-slate-50 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.14em] text-slate-400">
+              Follow-up
+            </p>
+            <p className="mt-1 font-semibold text-slate-800">
+              {formatDate(lead.followUpdate)}
+            </p>
+          </div>
+        )}
         <div className="rounded-2xl bg-slate-50 px-4 py-3">
           <p className="text-xs uppercase tracking-[0.14em] text-slate-400">
             Notes
@@ -131,18 +137,65 @@ const LeadDetail = ({
         <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
           Update status
         </label>
-        <select
-          value={lead.status || "New"}
-          onChange={(event) => onStatusChange?.(lead._id, event.target.value)}
-          className="mt-2 h-11 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-800 focus:ring-4 focus:ring-slate-300/40"
-        >
-          <option value="New">New</option>
-          <option value="Contacted">Contacted</option>
-          <option value="Qualified">Qualified</option>
-          <option value="Converted">Converted</option>
-          <option value="Lost">Lost</option>
-        </select>
+
+        {isLost ? (
+          <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-semibold text-rose-700">
+            Lost leads have no further status transitions.
+          </div>
+        ) : (
+          <select
+            value=""
+            onChange={(event) => {
+              if (!event.target.value) {
+                return;
+              }
+
+              onStatusChange?.(lead._id, event.target.value);
+            }}
+            className="mt-2 h-11 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-800 focus:ring-4 focus:ring-slate-300/40"
+          >
+            <option value="">Select next status ({lead.status})</option>
+            {statusOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
+
+      {isLost ? (
+        <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          Follow-up is disabled for lost leads.
+        </div>
+      ) : (
+        <div className="mt-6">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+            Follow-up date
+          </label>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              value={lead.followUpdate ? lead.followUpdate.slice(0, 10) : ""}
+              onChange={(event) =>
+                onFollowUpChange?.(lead._id, event.target.value || null)
+              }
+              disabled={followUpSubmitting}
+              className="h-11 rounded-2xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-800 focus:ring-4 focus:ring-slate-300/40 disabled:cursor-not-allowed disabled:opacity-70"
+            />
+
+            <button
+              type="button"
+              onClick={() => onFollowUpChange?.(lead._id, null)}
+              disabled={followUpSubmitting}
+              className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mt-7">
         <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">

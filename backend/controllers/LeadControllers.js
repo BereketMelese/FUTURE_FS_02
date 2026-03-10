@@ -1,6 +1,16 @@
 import Lead from "../models/Lead.js";
 import { validationResult } from "express-validator";
 
+const STATUS_TRANSITIONS = {
+  New: ["Contacted", "Qualified", "Lost"],
+  Contacted: ["Qualified", "Lost"],
+  Qualified: ["Lost", "Converted"],
+  Converted: [],
+  Lost: [],
+};
+
+const VALID_STATUSES = Object.keys(STATUS_TRANSITIONS);
+
 export const getLeads = async (req, res) => {
   try {
     const leads = await Lead.find({ createdBy: req.user }).sort({
@@ -62,7 +72,7 @@ export const createLead = async (req, res) => {
   }
 
   try {
-    const { name, email, phone, source } = req.body;
+    const { name, email, phone, source, followUpdate } = req.body;
     const existingLead = await Lead.findOne({
       email,
       createdBy: req.user,
@@ -80,6 +90,7 @@ export const createLead = async (req, res) => {
       email,
       phone,
       source,
+      followUpdate,
       createdBy: req.user,
     });
 
@@ -100,20 +111,37 @@ export const createLead = async (req, res) => {
 
 export const updateLead = async (req, res) => {
   try {
-    const { status } = req.body;
-    const validStatuses = [
-      "New",
-      "Contacted",
-      "Qualified",
-      "Converted",
-      "Lost",
-    ];
+    const { status, followUpdate } = req.body;
 
-    if (!validStatuses.includes(status)) {
+    const hasStatus = typeof status === "string";
+    const hasFollowUpdate = Object.prototype.hasOwnProperty.call(
+      req.body,
+      "followUpdate",
+    );
+
+    if (!hasStatus && !hasFollowUpdate) {
+      return res.status(400).json({
+        success: false,
+        message: "Provide status and/or followUpdate to update lead",
+      });
+    }
+
+    if (hasStatus && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status value",
       });
+    }
+
+    if (hasFollowUpdate && followUpdate) {
+      const parsedDate = new Date(followUpdate);
+
+      if (Number.isNaN(parsedDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid followUpdate date",
+        });
+      }
     }
 
     let lead = await Lead.findOne({
@@ -128,22 +156,42 @@ export const updateLead = async (req, res) => {
       });
     }
 
-    const validTransitions = {
-      New: ["Contacted", "Qualified", "Lost"],
-      Contacted: ["Qualified", "Lost"],
-      Qualified: ["Lost", "Converted"],
-      Converted: [],
-      Lost: [],
-    };
-
-    if (!validTransitions[lead.status].includes(status)) {
+    if (lead.status === "Lost" && hasStatus) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status transition from ${lead.status} to ${status}`,
+        message: "Lost leads cannot have status updates",
       });
     }
 
-    lead.status = status;
+    const targetStatus = hasStatus ? status : lead.status;
+
+    if (targetStatus === "Lost" && hasFollowUpdate && followUpdate) {
+      return res.status(400).json({
+        success: false,
+        message: "Lost leads cannot have a follow-up date",
+      });
+    }
+
+    if (hasStatus && status !== lead.status) {
+      if (!STATUS_TRANSITIONS[lead.status].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid status transition from ${lead.status} to ${status}`,
+        });
+      }
+
+      lead.status = status;
+    }
+
+    if (hasFollowUpdate) {
+      lead.followUpdate = followUpdate || undefined;
+    }
+
+    // Lost leads should never keep a follow-up date.
+    if (lead.status === "Lost") {
+      lead.followUpdate = undefined;
+    }
+
     await lead.save();
 
     res.json({
@@ -162,6 +210,23 @@ export const updateLead = async (req, res) => {
       message: "Server error",
     });
   }
+};
+
+export const getLeadStatusOptions = async (req, res) => {
+  const { status } = req.params;
+
+  if (!VALID_STATUSES.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid current status",
+    });
+  }
+
+  return res.json({
+    success: true,
+    currentStatus: status,
+    options: STATUS_TRANSITIONS[status],
+  });
 };
 
 export const addNote = async (req, res) => {

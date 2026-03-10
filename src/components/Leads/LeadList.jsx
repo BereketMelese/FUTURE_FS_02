@@ -26,6 +26,8 @@ const LeadList = ({
   error = "",
   onRetry,
   onStatusChange,
+  onFollowUpChange,
+  getStatusOptions,
   onDelete,
   onView,
 }) => {
@@ -95,7 +97,7 @@ const LeadList = ({
             Pipeline
           </p>
           <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-            Lead list
+            Lead table
           </h3>
           <p className="mt-2 text-sm text-slate-600">
             {filteredLeads.length} of {totalCount} leads shown
@@ -177,16 +179,33 @@ const LeadList = ({
           </p>
         </div>
       ) : (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredLeads.map((lead) => (
-            <LeadCard
-              key={lead._id}
-              lead={lead}
-              onStatusChange={onStatusChange}
-              onDelete={onDelete}
-              onView={onView}
-            />
-          ))}
+        <div className="mt-8 overflow-x-auto rounded-2xl border border-slate-200">
+          <table className="min-w-245 w-full text-left">
+            <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-slate-500">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Lead</th>
+                <th className="px-4 py-3 font-semibold">Source</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold">Follow-up</th>
+                <th className="px-4 py-3 font-semibold">Notes</th>
+                <th className="px-4 py-3 font-semibold">Created</th>
+                <th className="px-4 py-3 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white text-sm">
+              {filteredLeads.map((lead) => (
+                <LeadCard
+                  key={lead._id}
+                  lead={lead}
+                  onStatusChange={onStatusChange}
+                  onFollowUpChange={onFollowUpChange}
+                  statusOptions={getStatusOptions?.(lead.status) || []}
+                  onDelete={onDelete}
+                  onView={onView}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </section>
