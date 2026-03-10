@@ -63,6 +63,7 @@ const LeadDetail = ({
   };
 
   const notes = lead.notes || [];
+  const statusHistory = lead.statusHistory || [];
   const badgeTone = statusTone[lead.status] || "bg-slate-100 text-slate-700";
   const isLost = lead.status === "Lost";
 
@@ -225,6 +226,46 @@ const LeadDetail = ({
             {noteSubmitting ? "Saving note..." : "Save note"}
           </button>
         </form>
+      </div>
+
+      <div className="mt-7">
+        <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
+          Status history
+        </h4>
+
+        {statusHistory.length === 0 ? (
+          <div className="mt-3 rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+            No status changes recorded yet.
+          </div>
+        ) : (
+          <div className="mt-3 grid gap-3">
+            {[...statusHistory]
+              .sort(
+                (left, right) =>
+                  new Date(right.changedAt).getTime() -
+                  new Date(left.changedAt).getTime(),
+              )
+              .map((entry, index) => (
+                <article
+                  key={`${entry.changedAt}-${entry.to}-${index}`}
+                  className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3"
+                >
+                  <p className="text-sm font-medium text-slate-800">
+                    {entry.from || "Unknown"} to {entry.to || "Unknown"}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {formatDate(entry.changedAt, {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </article>
+              ))}
+          </div>
+        )}
       </div>
 
       <div className="mt-7">

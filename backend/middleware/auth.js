@@ -1,15 +1,18 @@
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import { sendError } from "../utils/apiResponse.js";
 dotenv.config();
 
 const authMiddleware = (req, res, next) => {
   const token = req.header("authorization")?.split(" ")[1];
 
   if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: "No token, authorization denied",
-    });
+    return sendError(
+      res,
+      401,
+      "AUTH_TOKEN_MISSING",
+      "No token, authorization denied",
+    );
   }
 
   try {
@@ -18,10 +21,7 @@ const authMiddleware = (req, res, next) => {
     next();
   } catch (err) {
     console.error("❌ Token verification failed:", err);
-    res.status(401).json({
-      success: false,
-      message: "Token is not valid",
-    });
+    return sendError(res, 401, "AUTH_TOKEN_INVALID", "Token is not valid");
   }
 };
 

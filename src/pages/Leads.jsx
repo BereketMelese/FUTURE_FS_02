@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import LeadForm from "../components/Leads/LeadForm";
 import LeadList from "../components/Leads/LeadList";
@@ -45,6 +45,7 @@ const Leads = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deleteLeadId, setDeleteLeadId] = useState(null);
   const [statusOptionsByStatus, setStatusOptionsByStatus] = useState({});
+  const leadsRequestRef = useRef({ requestId: 0, controller: null });
 
   const showFeedback = useCallback((type, message) => {
     setFeedback({ type, message, id: Date.now() });
@@ -100,18 +101,35 @@ const Leads = () => {
   );
 
   const loadLeads = useCallback(async () => {
+    const nextRequestId = leadsRequestRef.current.requestId + 1;
+    leadsRequestRef.current.controller?.abort();
+
+    const controller = new AbortController();
+    leadsRequestRef.current = {
+      requestId: nextRequestId,
+      controller,
+    };
+
     setIsLoading(true);
     setError("");
 
     try {
-      const response = await fetchLeads({
-        page,
-        limit,
-        status: statusFilter,
-        q: debouncedQuery,
-        due: dueFilter,
-        sort: `${sortField}:${sortDirection}`,
-      });
+      const response = await fetchLeads(
+        {
+          page,
+          limit,
+          status: statusFilter,
+          q: debouncedQuery,
+          due: dueFilter,
+          sort: `${sortField}:${sortDirection}`,
+        },
+        { signal: controller.signal },
+      );
+
+      if (leadsRequestRef.current.requestId !== nextRequestId) {
+        return;
+      }
+
       const fetchedLeads = response.data?.leads || [];
       setLeads(fetchedLeads);
       setTotal(response.data?.total || 0);
@@ -122,12 +140,25 @@ const Leads = () => {
           : current,
       );
     } catch (requestError) {
+      if (
+        requestError.name === "CanceledError" ||
+        requestError.code === "ERR_CANCELED"
+      ) {
+        return;
+      }
+
+      if (leadsRequestRef.current.requestId !== nextRequestId) {
+        return;
+      }
+
       setError(
         requestError.response?.data?.message ||
           "Unable to load leads right now.",
       );
     } finally {
-      setIsLoading(false);
+      if (leadsRequestRef.current.requestId === nextRequestId) {
+        setIsLoading(false);
+      }
     }
   }, [
     debouncedQuery,
@@ -164,6 +195,12 @@ const Leads = () => {
     loadLeads();
     loadAggregates();
   }, [loadAggregates, loadLeads]);
+
+  useEffect(() => {
+    return () => {
+      leadsRequestRef.current.controller?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const handler = (event) => {

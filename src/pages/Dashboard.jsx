@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { fetchLeads } from "../services/api";
+import { useCallback, useEffect, useState } from "react";
+import { fetchLeadAggregates } from "../services/api";
 import { useAuth } from "../hooks/authContextHooks";
 import Loading from "../components/Ui/Loading";
 
@@ -37,118 +37,80 @@ const formatDate = (value, options) => {
 
 const Dashboard = () => {
   const { user } = useAuth();
-  const [leads, setLeads] = useState([]);
+  const [dashboardData, setDashboardData] = useState({
+    total: 0,
+    totalNotes: 0,
+    convertedCount: 0,
+    activeCount: 0,
+    lostCount: 0,
+    conversionRate: 0,
+    overdueFollowUps: 0,
+    statusBreakdown: Object.keys(statusConfig).map((status) => ({
+      status,
+      count: 0,
+      percentage: 0,
+      ...statusConfig[status],
+    })),
+    topSources: [],
+    upcomingFollowUps: [],
+    recentLeads: [],
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const loadLeads = async () => {
+  const loadDashboard = useCallback(async (signal) => {
     setIsLoading(true);
     setError("");
 
     try {
-      const response = await fetchLeads();
-      setLeads(response.data?.leads || []);
+      const response = await fetchLeadAggregates({ signal });
+      const data = response.data || {};
+
+      setDashboardData({
+        total: data.total || 0,
+        totalNotes: data.totalNotes || 0,
+        convertedCount: data.convertedCount || 0,
+        activeCount: data.activeCount || 0,
+        lostCount: data.lostCount || 0,
+        conversionRate: data.conversionRate || 0,
+        overdueFollowUps: data.overdueFollowUps || 0,
+        statusBreakdown: (data.statusBreakdown || []).map((item) => ({
+          ...item,
+          ...statusConfig[item.status],
+        })),
+        topSources: data.topSources || [],
+        upcomingFollowUps: data.upcomingFollowUps || [],
+        recentLeads: data.recentLeads || [],
+      });
     } catch (requestError) {
+      if (
+        requestError.name === "CanceledError" ||
+        requestError.code === "ERR_CANCELED"
+      ) {
+        return;
+      }
+
       setError(
         requestError.response?.data?.message ||
           "Unable to load dashboard data right now.",
       );
     } finally {
-      setIsLoading(false);
+      if (!signal?.aborted) {
+        setIsLoading(false);
+      }
     }
-  };
-
-  useEffect(() => {
-    loadLeads();
   }, []);
 
-  const dashboardData = useMemo(() => {
-    const totalLeads = leads.length;
-    const totalNotes = leads.reduce(
-      (count, lead) => count + (lead.notes?.length || 0),
-      0,
-    );
-    const convertedCount = leads.filter(
-      (lead) => lead.status === "Converted",
-    ).length;
-    const activeCount = leads.filter((lead) =>
-      ["New", "Contacted", "Qualified"].includes(lead.status),
-    ).length;
-    const lostCount = leads.filter((lead) => lead.status === "Lost").length;
-    const conversionRate = totalLeads
-      ? Math.round((convertedCount / totalLeads) * 100)
-      : 0;
-
-    const statusBreakdown = Object.keys(statusConfig).map((status) => {
-      const count = leads.filter((lead) => lead.status === status).length;
-      const percentage = totalLeads
-        ? Math.round((count / totalLeads) * 100)
-        : 0;
-
-      return {
-        status,
-        count,
-        percentage,
-        ...statusConfig[status],
-      };
-    });
-
-    const sourceCounts = leads.reduce((accumulator, lead) => {
-      const key = lead.source || "Other";
-      accumulator[key] = (accumulator[key] || 0) + 1;
-      return accumulator;
-    }, {});
-
-    const topSources = Object.entries(sourceCounts)
-      .sort((left, right) => right[1] - left[1])
-      .slice(0, 4)
-      .map(([source, count]) => ({
-        source,
-        count,
-        percentage: totalLeads ? Math.round((count / totalLeads) * 100) : 0,
-      }));
-
-    const now = new Date();
-    const followUps = leads
-      .filter((lead) => lead.followUpdate)
-      .sort(
-        (left, right) =>
-          new Date(left.followUpdate).getTime() -
-          new Date(right.followUpdate).getTime(),
-      );
-
-    const upcomingFollowUps = followUps.slice(0, 5);
-    const overdueFollowUps = followUps.filter(
-      (lead) => new Date(lead.followUpdate).getTime() < now.getTime(),
-    ).length;
-
-    const recentLeads = [...leads]
-      .sort(
-        (left, right) =>
-          new Date(right.createdAt).getTime() -
-          new Date(left.createdAt).getTime(),
-      )
-      .slice(0, 6);
-
-    return {
-      totalLeads,
-      totalNotes,
-      convertedCount,
-      activeCount,
-      lostCount,
-      conversionRate,
-      overdueFollowUps,
-      statusBreakdown,
-      topSources,
-      upcomingFollowUps,
-      recentLeads,
-    };
-  }, [leads]);
+  useEffect(() => {
+    const controller = new AbortController();
+    loadDashboard(controller.signal);
+    return () => controller.abort();
+  }, [loadDashboard]);
 
   const summaryCards = [
     {
       label: "Total leads",
-      value: numberFormatter.format(dashboardData.totalLeads),
+      value: numberFormatter.format(dashboardData.total),
       detail: `${dashboardData.activeCount} active in pipeline`,
     },
     {
@@ -228,7 +190,7 @@ const Dashboard = () => {
           <p className="mt-2 text-sm">{error}</p>
           <button
             type="button"
-            onClick={loadLeads}
+            onClick={() => loadDashboard()}
             className="mt-4 inline-flex h-11 items-center justify-center rounded-2xl bg-rose-600 px-4 text-sm font-semibold text-white transition hover:bg-rose-700"
           >
             Try again
@@ -265,7 +227,7 @@ const Dashboard = () => {
                   </h3>
                 </div>
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
-                  {dashboardData.totalLeads} total
+                  {dashboardData.total} total
                 </span>
               </div>
 

@@ -18,9 +18,11 @@ export const signIn = (formData) => API.post("/auth/login", formData);
 export const signUp = (formData) => API.post("/auth/register", formData);
 export const fetchUserApi = () => API.get("/auth/me");
 
-export const fetchLeads = (params = {}) => API.get("/leads", { params });
+export const fetchLeads = (params = {}, config = {}) =>
+  API.get("/leads", { ...config, params });
 export const fetchLead = (id) => API.get(`/leads/${id}`);
-export const fetchLeadAggregates = () => API.get("/leads/aggregates");
+export const fetchLeadAggregates = (config = {}) =>
+  API.get("/leads/aggregates", config);
 const statusOptionsCache = new Map();
 const STATUS_OPTIONS_TTL_MS = 10 * 60 * 1000;
 

@@ -2,14 +2,12 @@ import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { validationResult } from "express-validator";
+import { sendError, sendValidationError } from "../utils/apiResponse.js";
 
 const register = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({
-      success: false,
-      errors: errors.array(),
-    });
+    return sendValidationError(res, errors);
   }
 
   try {
@@ -21,10 +19,7 @@ const register = async (req, res) => {
     });
 
     if (user) {
-      return res.status(400).json({
-        success: false,
-        message: "User already exists",
-      });
+      return sendError(res, 400, "USER_ALREADY_EXISTS", "User already exists");
     }
 
     user = new User({
@@ -52,20 +47,14 @@ const register = async (req, res) => {
       },
     });
   } catch {
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    return sendError(res, 500, "SERVER_ERROR", "Server error");
   }
 };
 
 const login = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({
-      success: false,
-      errors: errors.array(),
-    });
+    return sendValidationError(res, errors);
   }
 
   try {
@@ -73,19 +62,13 @@ const login = async (req, res) => {
     const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid credentials",
-      });
+      return sendError(res, 400, "INVALID_CREDENTIALS", "Invalid credentials");
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid credentials",
-      });
+      return sendError(res, 400, "INVALID_CREDENTIALS", "Invalid credentials");
     }
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
@@ -103,20 +86,14 @@ const login = async (req, res) => {
     });
   } catch (error) {
     console.error(error.message);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    return sendError(res, 500, "SERVER_ERROR", "Server error");
   }
 };
 
 const checkUserExists = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({
-      success: false,
-      errors: errors.array(),
-    });
+    return sendValidationError(res, errors);
   }
 
   try {
@@ -138,10 +115,7 @@ const checkUserExists = async (req, res) => {
     });
   } catch (error) {
     console.error(error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    return sendError(res, 500, "SERVER_ERROR", "Server error");
   }
 };
 
@@ -150,10 +124,7 @@ const getCurrentUser = async (req, res) => {
     const user = await User.findById(req.user).select("-password");
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+      return sendError(res, 404, "USER_NOT_FOUND", "User not found");
     }
 
     return res.json({
@@ -166,10 +137,7 @@ const getCurrentUser = async (req, res) => {
     });
   } catch (error) {
     console.error(error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    return sendError(res, 500, "SERVER_ERROR", "Server error");
   }
 };
 

@@ -1,5 +1,6 @@
 import Lead from "../models/Lead.js";
 import { validationResult } from "express-validator";
+import { sendError, sendValidationError } from "../utils/apiResponse.js";
 
 const STATUS_TRANSITIONS = {
   New: ["Contacted", "Qualified", "Lost"],
@@ -11,14 +12,6 @@ const STATUS_TRANSITIONS = {
 
 const VALID_STATUSES = Object.keys(STATUS_TRANSITIONS);
 
-const sendError = (res, status, code, message, details) =>
-  res.status(status).json({
-    success: false,
-    code,
-    message,
-    ...(details ? { details } : {}),
-  });
-
 const parsePositiveInt = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -28,6 +21,16 @@ const normalizeDateOnly = (value) => {
   const date = new Date(value);
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 };
+
+const buildStatusBreakdown = (statusCounts, total) =>
+  VALID_STATUSES.map((status) => {
+    const count = statusCounts[status] || 0;
+    return {
+      status,
+      count,
+      percentage: total ? Math.round((count / total) * 100) : 0,
+    };
+  });
 
 export const getLeads = async (req, res) => {
   try {
@@ -142,9 +145,7 @@ export const getLead = async (req, res) => {
 export const createLead = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return sendError(res, 400, "VALIDATION_ERROR", "Validation failed", {
-      errors: errors.array(),
-    });
+    return sendValidationError(res, errors);
   }
 
   try {
@@ -188,9 +189,7 @@ export const updateLead = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return sendError(res, 400, "VALIDATION_ERROR", "Validation failed", {
-        errors: errors.array(),
-      });
+      return sendValidationError(res, errors);
     }
 
     const { status, followUpdate } = req.body;
@@ -302,9 +301,7 @@ export const updateLeadFollowUp = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return sendError(res, 400, "VALIDATION_ERROR", "Validation failed", {
-        errors: errors.array(),
-      });
+      return sendValidationError(res, errors);
     }
 
     const { followUpdate } = req.body;
@@ -434,16 +431,41 @@ export const deleteLead = async (req, res) => {
 
 export const getLeadAggregates = async (req, res) => {
   try {
-    const [statusAgg, total, overdueFollowUps] = await Promise.all([
+    const today = normalizeDateOnly(new Date());
+    const [statusAgg, sourceAgg, total, overdueFollowUps, totalNotes, upcomingFollowUps, recentLeads] = await Promise.all([
       Lead.aggregate([
         { $match: { createdBy: req.user } },
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
+      Lead.aggregate([
+        { $match: { createdBy: req.user } },
+        { $group: { _id: { $ifNull: ["$source", "Other"] }, count: { $sum: 1 } } },
+        { $sort: { count: -1, _id: 1 } },
+        { $limit: 4 },
+      ]),
       Lead.countDocuments({ createdBy: req.user }),
       Lead.countDocuments({
         createdBy: req.user,
-        followUpdate: { $lt: normalizeDateOnly(new Date()) },
+        followUpdate: { $lt: today },
       }),
+      Lead.aggregate([
+        { $match: { createdBy: req.user } },
+        { $project: { noteCount: { $size: { $ifNull: ["$notes", []] } } } },
+        { $group: { _id: null, totalNotes: { $sum: "$noteCount" } } },
+      ]),
+      Lead.find({
+        createdBy: req.user,
+        followUpdate: { $exists: true, $ne: null },
+      })
+        .sort({ followUpdate: 1, _id: 1 })
+        .select("name email status source followUpdate")
+        .limit(5)
+        .lean(),
+      Lead.find({ createdBy: req.user })
+        .sort({ createdAt: -1, _id: -1 })
+        .select("name email status source createdAt notes")
+        .limit(6)
+        .lean(),
     ]);
 
     const byStatus = VALID_STATUSES.reduce((acc, status) => {
@@ -457,11 +479,34 @@ export const getLeadAggregates = async (req, res) => {
       }
     });
 
+    const activeCount =
+      (byStatus.New || 0) +
+      (byStatus.Contacted || 0) +
+      (byStatus.Qualified || 0);
+    const convertedCount = byStatus.Converted || 0;
+    const lostCount = byStatus.Lost || 0;
+    const conversionRate = total ? Math.round((convertedCount / total) * 100) : 0;
+    const topSources = sourceAgg.map((entry) => ({
+      source: entry._id,
+      count: entry.count,
+      percentage: total ? Math.round((entry.count / total) * 100) : 0,
+    }));
+    const statusBreakdown = buildStatusBreakdown(byStatus, total);
+
     return res.json({
       success: true,
       total,
       overdueFollowUps,
       byStatus,
+      activeCount,
+      convertedCount,
+      lostCount,
+      conversionRate,
+      totalNotes: totalNotes[0]?.totalNotes || 0,
+      topSources,
+      statusBreakdown,
+      upcomingFollowUps,
+      recentLeads,
     });
   } catch {
     return sendError(res, 500, "SERVER_ERROR", "Server error");
