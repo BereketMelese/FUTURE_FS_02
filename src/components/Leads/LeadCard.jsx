@@ -69,7 +69,16 @@ const getFollowUpMeta = (followUpdate) => {
   };
 };
 
-const LeadCard = ({ lead, onDelete, onView }) => {
+const LeadCard = ({
+  lead,
+  onDelete,
+  onView,
+  onStatusChange,
+  onFollowUpChange,
+  statusOptions = [],
+  isPending = false,
+  rowError = "",
+}) => {
   if (!lead) return null;
 
   const notesCount = lead.notes?.length || 0;
@@ -92,23 +101,54 @@ const LeadCard = ({ lead, onDelete, onView }) => {
       </td>
 
       <td className="px-4 py-3">
-        <span
-          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${badgeTone}`}
-        >
-          {isLost ? lead.status || "New" : lead.status || "New"}
-        </span>
+        <div className="grid gap-2">
+          <span
+            className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${badgeTone}`}
+          >
+            {lead.status || "New"}
+          </span>
+          {isLost ? (
+            <span className="text-xs font-semibold text-rose-700">
+              Status locked
+            </span>
+          ) : (
+            <select
+              value=""
+              onChange={(event) => {
+                const nextStatus = event.target.value;
+                if (!nextStatus) return;
+                onStatusChange?.(lead._id, nextStatus);
+              }}
+              disabled={isPending}
+              className="h-9 min-w-36 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-slate-700"
+            >
+              <option value="">Next status</option>
+              {statusOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </td>
 
       <td className="px-4 py-3">
-        <p className="text-sm font-medium text-slate-700">
-          {!isLost && formatDate(lead.followUpdate)}
-        </p>
         {!isLost ? (
-          <>
+          <div className="grid gap-2">
+            <input
+              type="date"
+              value={lead.followUpdate ? lead.followUpdate.slice(0, 10) : ""}
+              onChange={(event) =>
+                onFollowUpChange?.(lead._id, event.target.value || null)
+              }
+              disabled={isPending}
+              className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-slate-700"
+            />
             <p className={`mt-1 text-xs font-semibold ${followMeta.tone}`}>
               {followMeta.label}
             </p>
-          </>
+          </div>
         ) : (
           <p className="mt-1 text-xs font-semibold text-rose-700">Disabled</p>
         )}
@@ -134,11 +174,17 @@ const LeadCard = ({ lead, onDelete, onView }) => {
           <button
             type="button"
             onClick={() => onDelete?.(lead._id)}
+            disabled={isPending}
             className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
           >
             Delete
           </button>
         </div>
+        {rowError && (
+          <p className="mt-2 max-w-44 text-xs font-medium text-rose-700">
+            {rowError}
+          </p>
+        )}
       </td>
     </tr>
   );

@@ -18,8 +18,9 @@ export const signIn = (formData) => API.post("/auth/login", formData);
 export const signUp = (formData) => API.post("/auth/register", formData);
 export const fetchUserApi = () => API.get("/auth/me");
 
-export const fetchLeads = () => API.get("/leads");
+export const fetchLeads = (params = {}) => API.get("/leads", { params });
 export const fetchLead = (id) => API.get(`/leads/${id}`);
+export const fetchLeadAggregates = () => API.get("/leads/aggregates");
 const statusOptionsCache = new Map();
 const STATUS_OPTIONS_TTL_MS = 10 * 60 * 1000;
 
@@ -51,7 +52,7 @@ export const createLead = (formData) => API.post("/leads", formData);
 export const updateLeadStatus = (id, status) =>
   API.put(`/leads/${id}`, { status });
 export const updateLeadFollowUpdate = (id, followUpdate) =>
-  API.put(`/leads/${id}`, { followUpdate });
+  API.patch(`/leads/${id}/follow-up`, { followUpdate });
 export const addNote = (id, content) =>
   API.post(`/leads/${id}/notes`, { content });
 export const deleteLead = (id) => API.delete(`/leads/${id}`);

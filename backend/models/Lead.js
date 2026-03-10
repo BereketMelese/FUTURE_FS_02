@@ -53,6 +53,24 @@ const LeadSchema = new mongoose.Schema({
   followUpdate: {
     type: Date,
   },
+  statusHistory: [
+    {
+      from: {
+        type: String,
+      },
+      to: {
+        type: String,
+      },
+      changedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+      changedAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+  ],
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
@@ -63,6 +81,10 @@ const LeadSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
+LeadSchema.index({ createdBy: 1, createdAt: -1 });
+LeadSchema.index({ createdBy: 1, status: 1 });
+LeadSchema.index({ createdBy: 1, followUpdate: 1 });
 
 const Lead = mongoose.model("Lead", LeadSchema);
 

@@ -4,10 +4,12 @@ import LeadForm from "../components/Leads/LeadForm";
 import LeadList from "../components/Leads/LeadList";
 import LeadDetail from "../components/Leads/LeadDetail";
 import Modal from "../components/Ui/Modal";
+import ConfirmModal from "../components/Ui/ConfirmModal";
 import {
   addNote,
   createLead,
   deleteLead,
+  fetchLeadAggregates,
   fetchLeads,
   fetchLeadStatusOptions,
   updateLeadFollowUpdate,
@@ -20,13 +22,28 @@ const Leads = () => {
   const [leads, setLeads] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isUpdatingFollowUp, setIsUpdatingFollowUp] = useState(false);
+  const [rowPending, setRowPending] = useState({});
+  const [rowErrors, setRowErrors] = useState({});
   const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [dueFilter, setDueFilter] = useState("all");
+  const [sortField, setSortField] = useState("createdAt");
+  const [sortDirection, setSortDirection] = useState("desc");
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [aggregates, setAggregates] = useState({ total: 0, byStatus: {} });
   const [feedback, setFeedback] = useState(null);
   const [feedbackProgress, setFeedbackProgress] = useState(100);
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [deleteLeadId, setDeleteLeadId] = useState(null);
   const [statusOptionsByStatus, setStatusOptionsByStatus] = useState({});
 
   const showFeedback = useCallback((type, message) => {
@@ -87,9 +104,18 @@ const Leads = () => {
     setError("");
 
     try {
-      const response = await fetchLeads();
+      const response = await fetchLeads({
+        page,
+        limit,
+        status: statusFilter,
+        q: debouncedQuery,
+        due: dueFilter,
+        sort: `${sortField}:${sortDirection}`,
+      });
       const fetchedLeads = response.data?.leads || [];
       setLeads(fetchedLeads);
+      setTotal(response.data?.total || 0);
+      setTotalPages(response.data?.totalPages || 1);
       setSelectedLeadId((current) =>
         current && !fetchedLeads.some((lead) => lead._id === current)
           ? null
@@ -103,11 +129,57 @@ const Leads = () => {
     } finally {
       setIsLoading(false);
     }
+  }, [
+    debouncedQuery,
+    dueFilter,
+    limit,
+    page,
+    sortDirection,
+    sortField,
+    statusFilter,
+  ]);
+
+  const loadAggregates = useCallback(async () => {
+    try {
+      const response = await fetchLeadAggregates();
+      setAggregates({
+        total: response.data?.total || 0,
+        byStatus: response.data?.byStatus || {},
+      });
+    } catch {
+      setAggregates({ total: 0, byStatus: {} });
+    }
   }, []);
 
   useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setPage(1);
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [query]);
+
+  useEffect(() => {
     loadLeads();
-  }, [loadLeads]);
+    loadAggregates();
+  }, [loadAggregates, loadLeads]);
+
+  useEffect(() => {
+    const handler = (event) => {
+      if ((event.target?.tagName || "").toLowerCase() === "input") {
+        return;
+      }
+
+      if (event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        setIsCreateModalOpen(true);
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   useEffect(() => {
     if (!feedback?.id) {
@@ -154,11 +226,16 @@ const Leads = () => {
       const newLead = response.data?.lead;
 
       if (newLead) {
-        setLeads((current) => [newLead, ...current]);
         setSelectedLeadId(newLead._id);
       }
 
       setIsCreateModalOpen(false);
+      if (page === 1) {
+        await loadLeads();
+      } else {
+        setPage(1);
+      }
+      await loadAggregates();
       showFeedback("success", "Lead created successfully.");
       return { success: true };
     } catch (requestError) {
@@ -179,6 +256,23 @@ const Leads = () => {
   };
 
   const handleStatusChange = async (id, status) => {
+    const previousLead = leads.find((lead) => lead._id === id);
+    if (!previousLead) return;
+
+    setRowPending((current) => ({ ...current, [id]: true }));
+    setRowErrors((current) => ({ ...current, [id]: "" }));
+    setLeads((current) =>
+      current.map((lead) =>
+        lead._id === id
+          ? {
+              ...lead,
+              status,
+              followUpdate: status === "Lost" ? null : lead.followUpdate,
+            }
+          : lead,
+      ),
+    );
+
     try {
       const response = await updateLeadStatus(id, status);
       const updatedLead = response.data?.lead;
@@ -193,34 +287,52 @@ const Leads = () => {
 
       showFeedback("success", "Lead status updated.");
     } catch (requestError) {
+      setLeads((current) =>
+        current.map((lead) => (lead._id === id ? previousLead : lead)),
+      );
+      setRowErrors((current) => ({
+        ...current,
+        [id]: requestError.response?.data?.message || "Could not update row.",
+      }));
       showFeedback(
         "error",
         requestError.response?.data?.message || "Unable to update lead status.",
       );
+    } finally {
+      setRowPending((current) => ({ ...current, [id]: false }));
     }
   };
 
-  const handleDelete = async (id) => {
-    const shouldDelete = window.confirm("Delete this lead permanently?");
+  const handleDelete = async () => {
+    if (!deleteLeadId) return;
 
-    if (!shouldDelete) {
-      return;
-    }
+    setIsDeleting(true);
 
     try {
-      await deleteLead(id);
-      setLeads((current) => current.filter((lead) => lead._id !== id));
+      await deleteLead(deleteLeadId);
+      setLeads((current) =>
+        current.filter((lead) => lead._id !== deleteLeadId),
+      );
 
-      if (selectedLeadId === id) {
+      if (selectedLeadId === deleteLeadId) {
         setSelectedLeadId(null);
       }
 
+      setDeleteLeadId(null);
+      if (page > totalPages - 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        await loadLeads();
+      }
+      await loadAggregates();
       showFeedback("success", "Lead deleted.");
     } catch (requestError) {
       showFeedback(
         "error",
         requestError.response?.data?.message || "Unable to delete lead.",
       );
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -268,6 +380,16 @@ const Leads = () => {
     }
 
     setIsUpdatingFollowUp(true);
+    setRowPending((current) => ({ ...current, [id]: true }));
+    setRowErrors((current) => ({ ...current, [id]: "" }));
+    const previousLead = leads.find((lead) => lead._id === id);
+    setLeads((current) =>
+      current.map((lead) =>
+        lead._id === id
+          ? { ...lead, followUpdate: followUpdate || null }
+          : lead,
+      ),
+    );
 
     try {
       const response = await updateLeadFollowUpdate(id, followUpdate);
@@ -287,6 +409,16 @@ const Leads = () => {
       );
       return { success: true };
     } catch (requestError) {
+      if (previousLead) {
+        setLeads((current) =>
+          current.map((lead) => (lead._id === id ? previousLead : lead)),
+        );
+      }
+      setRowErrors((current) => ({
+        ...current,
+        [id]:
+          requestError.response?.data?.message || "Unable to update follow-up.",
+      }));
       showFeedback(
         "error",
         requestError.response?.data?.message ||
@@ -300,6 +432,7 @@ const Leads = () => {
       };
     } finally {
       setIsUpdatingFollowUp(false);
+      setRowPending((current) => ({ ...current, [id]: false }));
     }
   };
 
@@ -333,16 +466,14 @@ const Leads = () => {
               Total leads
             </p>
             <p className="mt-2 text-3xl font-semibold text-white">
-              {leads.length}
+              {aggregates.total || total}
             </p>
           </div>
 
           <div className="rounded-2xl bg-white/8 p-4 text-sm text-slate-200">
-            Converted:{" "}
-            {leads.filter((lead) => lead.status === "Converted").length}
+            Converted: {aggregates.byStatus?.Converted || 0}
             <br />
-            Qualified:{" "}
-            {leads.filter((lead) => lead.status === "Qualified").length}
+            Qualified: {aggregates.byStatus?.Qualified || 0}
           </div>
         </div>
       </section>
@@ -390,8 +521,36 @@ const Leads = () => {
         leads={leads}
         isLoading={isLoading}
         error={error}
+        query={query}
+        onQueryChange={setQuery}
+        activeStatus={statusFilter}
+        onFilterStatusChange={(status) => {
+          setStatusFilter(status);
+          setPage(1);
+        }}
+        dueFilter={dueFilter}
+        onDueFilterChange={(value) => {
+          setDueFilter(value);
+          setPage(1);
+        }}
+        sortField={sortField}
+        sortDirection={sortDirection}
+        onSortChange={(field, direction) => {
+          setSortField(field);
+          setSortDirection(direction);
+          setPage(1);
+        }}
+        page={page}
+        totalPages={totalPages}
+        totalCount={total}
+        onPageChange={setPage}
         onRetry={loadLeads}
-        onDelete={handleDelete}
+        onRowStatusChange={handleStatusChange}
+        onFollowUpChange={handleFollowUpChange}
+        getStatusOptions={getStatusOptions}
+        rowPending={rowPending}
+        rowErrors={rowErrors}
+        onDelete={(id) => setDeleteLeadId(id)}
         onView={(lead) => setSelectedLeadId(lead._id)}
       />
 
@@ -419,6 +578,16 @@ const Leads = () => {
           noteSubmitting={isSavingNote}
         />
       </Modal>
+
+      <ConfirmModal
+        isOpen={!!deleteLeadId}
+        title="Delete lead"
+        message="This action is permanent. Delete this lead and all associated notes?"
+        confirmLabel="Delete lead"
+        isSubmitting={isDeleting}
+        onCancel={() => setDeleteLeadId(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 };

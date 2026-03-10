@@ -6,12 +6,32 @@ import {
   getLead,
   createLead,
   updateLead,
+  updateLeadFollowUp,
   getLeadStatusOptions,
+  getLeadAggregates,
   addNote,
   deleteLead,
 } from "../controllers/LeadControllers.js";
 
 const router = express.Router();
+
+const updateValidation = [
+  body("status")
+    .optional()
+    .isIn(["New", "Contacted", "Qualified", "Converted", "Lost"])
+    .withMessage("Invalid status value"),
+  body("followUpdate")
+    .optional({ nullable: true, checkFalsy: true })
+    .isISO8601()
+    .withMessage("followUpdate must be a valid ISO date"),
+];
+
+const followUpValidation = [
+  body("followUpdate")
+    .optional({ nullable: true, checkFalsy: true })
+    .isISO8601()
+    .withMessage("followUpdate must be a valid ISO date"),
+];
 
 const leadValidation = [
   body("name").notEmpty().withMessage("Name is required"),
@@ -190,11 +210,13 @@ const leadValidation = [
  */
 router.use(auth);
 router.get("/", getLeads);
+router.get("/aggregates", getLeadAggregates);
 router.get("/status-options/:status", getLeadStatusOptions);
 
 router.get("/:id", getLead);
 router.post("/", leadValidation, createLead);
-router.put("/:id", updateLead);
+router.put("/:id", updateValidation, updateLead);
+router.patch("/:id/follow-up", followUpValidation, updateLeadFollowUp);
 router.post("/:id/notes", addNote);
 router.delete("/:id", deleteLead);
 

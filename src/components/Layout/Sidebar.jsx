@@ -30,7 +30,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     <>
       <div
         className={`fixed inset-0 z-30 bg-slate-950/45 transition lg:hidden ${
-          isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          isOpen
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
         aria-hidden="true"
@@ -92,12 +94,13 @@ const Sidebar = ({ isOpen, onClose }) => {
           ))}
         </nav>
 
-        <div className="mt-auto rounded-3xl border border-sky-300/15 bg-gradient-to-br from-sky-400/10 to-emerald-300/10 p-4">
+        <div className="mt-auto rounded-3xl border border-sky-300/15 bg-linear-to-br from-sky-400/10 to-emerald-300/10 p-4">
           <p className="text-xs uppercase tracking-[0.2em] text-sky-200/80">
             Daily Focus
           </p>
           <p className="mt-2 text-sm leading-relaxed text-slate-200">
-            Keep the pipeline active with steady follow-ups, clear priorities, and fast status updates.
+            Keep the pipeline active with steady follow-ups, clear priorities,
+            and fast status updates.
           </p>
         </div>
       </aside>

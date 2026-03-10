@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react";
 import LeadCard from "./LeadCard";
 import Loading from "../Ui/Loading";
 
@@ -10,84 +9,54 @@ const statusOptions = [
   "Converted",
   "Lost",
 ];
+const dueOptions = ["all", "today", "overdue", "upcoming"];
 
-const sortOptions = {
-  newest: "Newest first",
-  oldest: "Oldest first",
-  nameAsc: "Name A-Z",
-  nameDesc: "Name Z-A",
+const sortableColumns = {
+  Lead: "name",
+  Status: "status",
+  "Follow-up": "followUpdate",
+  Created: "createdAt",
 };
-
-const normalize = (value) => (value || "").toString().toLowerCase();
 
 const LeadList = ({
   leads = [],
   isLoading = false,
   error = "",
   onRetry,
-  onStatusChange,
+  query = "",
+  onQueryChange,
+  activeStatus = "All",
+  onFilterStatusChange,
+  dueFilter = "all",
+  onDueFilterChange,
+  sortField = "createdAt",
+  sortDirection = "desc",
+  onSortChange,
+  page = 1,
+  totalPages = 1,
+  totalCount = 0,
+  onPageChange,
+  onRowStatusChange,
   onFollowUpChange,
   getStatusOptions,
+  rowPending = {},
+  rowErrors = {},
   onDelete,
   onView,
 }) => {
-  const [activeStatus, setActiveStatus] = useState("All");
-  const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState("newest");
+  const renderSortIndicator = (field) => {
+    if (sortField !== field) return "";
+    return sortDirection === "asc" ? " ▲" : " ▼";
+  };
 
-  const filteredLeads = useMemo(() => {
-    const normalizedQuery = normalize(query).trim();
-
-    const nextLeads = leads
-      .filter((lead) => {
-        if (activeStatus !== "All" && lead.status !== activeStatus) {
-          return false;
-        }
-
-        if (!normalizedQuery) {
-          return true;
-        }
-
-        const haystack = [lead.name, lead.email, lead.phone, lead.source]
-          .map(normalize)
-          .join(" ");
-
-        return haystack.includes(normalizedQuery);
-      })
-      .slice();
-
-    if (sortBy === "newest") {
-      nextLeads.sort(
-        (left, right) =>
-          new Date(right.createdAt).getTime() -
-          new Date(left.createdAt).getTime(),
-      );
+  const handleColumnSort = (field) => {
+    if (!field) return;
+    if (sortField === field) {
+      onSortChange?.(field, sortDirection === "asc" ? "desc" : "asc");
+      return;
     }
-
-    if (sortBy === "oldest") {
-      nextLeads.sort(
-        (left, right) =>
-          new Date(left.createdAt).getTime() -
-          new Date(right.createdAt).getTime(),
-      );
-    }
-
-    if (sortBy === "nameAsc") {
-      nextLeads.sort((left, right) =>
-        normalize(left.name).localeCompare(normalize(right.name)),
-      );
-    }
-
-    if (sortBy === "nameDesc") {
-      nextLeads.sort((left, right) =>
-        normalize(right.name).localeCompare(normalize(left.name)),
-      );
-    }
-
-    return nextLeads;
-  }, [activeStatus, leads, query, sortBy]);
-
-  const totalCount = leads.length;
+    onSortChange?.(field, "desc");
+  };
 
   return (
     <section className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm">
@@ -100,34 +69,16 @@ const LeadList = ({
             Lead table
           </h3>
           <p className="mt-2 text-sm text-slate-600">
-            {filteredLeads.length} of {totalCount} leads shown
+            {leads.length} of {totalCount} leads shown
           </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <label className="text-slate-500" htmlFor="lead-sort">
-            Sort by
-          </label>
-          <select
-            id="lead-sort"
-            value={sortBy}
-            onChange={(event) => setSortBy(event.target.value)}
-            className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-slate-800 focus:ring-4 focus:ring-slate-300/40"
-          >
-            {Object.entries(sortOptions).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
+      <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
         <input
           type="search"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => onQueryChange?.(event.target.value)}
           placeholder="Search by name, email, phone, or source"
           className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-800 outline-none transition focus:border-slate-800 focus:ring-4 focus:ring-slate-300/40"
         />
@@ -137,7 +88,7 @@ const LeadList = ({
             <button
               key={status}
               type="button"
-              onClick={() => setActiveStatus(status)}
+              onClick={() => onFilterStatusChange?.(status)}
               className={`h-10 rounded-xl px-3 text-sm font-semibold transition ${
                 activeStatus === status
                   ? "bg-slate-900 text-white"
@@ -148,13 +99,40 @@ const LeadList = ({
             </button>
           ))}
         </div>
+
+        <div className="flex flex-wrap gap-2">
+          {dueOptions.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onDueFilterChange?.(option)}
+              className={`h-10 rounded-xl px-3 text-xs font-semibold uppercase tracking-[0.08em] transition ${
+                dueFilter === option
+                  ? "bg-cyan-700 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (
-        <div className="mt-8 flex min-h-52 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
-          <div className="flex flex-col items-center gap-2 text-slate-500">
-            <Loading size="lg" />
-            <p className="text-sm">Loading leads...</p>
+        <div className="mt-8 overflow-x-auto rounded-2xl border border-slate-200">
+          <table className="min-w-245 w-full text-left">
+            <tbody>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <tr key={index} className="border-b border-slate-100">
+                  <td colSpan={7} className="px-4 py-4">
+                    <div className="h-4 w-full animate-pulse rounded bg-slate-100" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex items-center justify-center py-3 text-slate-500">
+            <Loading size="sm" />
           </div>
         </div>
       ) : error ? (
@@ -169,7 +147,7 @@ const LeadList = ({
             Try again
           </button>
         </div>
-      ) : filteredLeads.length === 0 ? (
+      ) : leads.length === 0 ? (
         <div className="mt-8 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center">
           <p className="text-base font-semibold text-slate-700">
             No leads found
@@ -183,23 +161,65 @@ const LeadList = ({
           <table className="min-w-245 w-full text-left">
             <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-semibold">Lead</th>
+                <th className="px-4 py-3 font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => handleColumnSort(sortableColumns.Lead)}
+                    className="inline-flex items-center gap-1"
+                  >
+                    Lead
+                    <span>{renderSortIndicator(sortableColumns.Lead)}</span>
+                  </button>
+                </th>
                 <th className="px-4 py-3 font-semibold">Source</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Follow-up</th>
+                <th className="px-4 py-3 font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => handleColumnSort(sortableColumns.Status)}
+                    className="inline-flex items-center gap-1"
+                  >
+                    Status
+                    <span>{renderSortIndicator(sortableColumns.Status)}</span>
+                  </button>
+                </th>
+                <th className="px-4 py-3 font-semibold">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleColumnSort(sortableColumns["Follow-up"])
+                    }
+                    className="inline-flex items-center gap-1"
+                  >
+                    Follow-up
+                    <span>
+                      {renderSortIndicator(sortableColumns["Follow-up"])}
+                    </span>
+                  </button>
+                </th>
                 <th className="px-4 py-3 font-semibold">Notes</th>
-                <th className="px-4 py-3 font-semibold">Created</th>
+                <th className="px-4 py-3 font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => handleColumnSort(sortableColumns.Created)}
+                    className="inline-flex items-center gap-1"
+                  >
+                    Created
+                    <span>{renderSortIndicator(sortableColumns.Created)}</span>
+                  </button>
+                </th>
                 <th className="px-4 py-3 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white text-sm">
-              {filteredLeads.map((lead) => (
+              {leads.map((lead) => (
                 <LeadCard
                   key={lead._id}
                   lead={lead}
-                  onStatusChange={onStatusChange}
+                  onStatusChange={onRowStatusChange}
                   onFollowUpChange={onFollowUpChange}
                   statusOptions={getStatusOptions?.(lead.status) || []}
+                  isPending={!!rowPending[lead._id]}
+                  rowError={rowErrors[lead._id] || ""}
                   onDelete={onDelete}
                   onView={onView}
                 />
@@ -208,6 +228,30 @@ const LeadList = ({
           </table>
         </div>
       )}
+
+      <div className="mt-5 flex items-center justify-between">
+        <p className="text-sm text-slate-600">
+          Page {page} of {totalPages}
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => onPageChange?.(Math.max(1, page - 1))}
+            disabled={page <= 1 || isLoading}
+            className="h-9 rounded-lg border border-slate-300 px-3 text-sm text-slate-700 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            onClick={() => onPageChange?.(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages || isLoading}
+            className="h-9 rounded-lg border border-slate-300 px-3 text-sm text-slate-700 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </section>
   );
 };
