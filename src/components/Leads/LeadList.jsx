@@ -1,105 +1,195 @@
-const statusColors = {
-  New: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  Contacted:
-    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  Qualified:
-    "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  Converted:
-    "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  Lost: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+import { useMemo, useState } from "react";
+import LeadCard from "./LeadCard";
+import Loading from "../Ui/Loading";
+
+const statusOptions = [
+  "All",
+  "New",
+  "Contacted",
+  "Qualified",
+  "Converted",
+  "Lost",
+];
+
+const sortOptions = {
+  newest: "Newest first",
+  oldest: "Oldest first",
+  nameAsc: "Name A-Z",
+  nameDesc: "Name Z-A",
 };
 
-const LeadList = ({ leads, onStatusChange, onDelete }) => {
-  if (leads.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-gray-500 dark:text-gray-400">
-          No leads yet. Create your first lead!
-        </p>
-      </div>
-    );
-  }
+const normalize = (value) => (value || "").toString().toLowerCase();
+
+const LeadList = ({
+  leads = [],
+  isLoading = false,
+  error = "",
+  onRetry,
+  onStatusChange,
+  onDelete,
+  onView,
+}) => {
+  const [activeStatus, setActiveStatus] = useState("All");
+  const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
+
+  const filteredLeads = useMemo(() => {
+    const normalizedQuery = normalize(query).trim();
+
+    const nextLeads = leads
+      .filter((lead) => {
+        if (activeStatus !== "All" && lead.status !== activeStatus) {
+          return false;
+        }
+
+        if (!normalizedQuery) {
+          return true;
+        }
+
+        const haystack = [lead.name, lead.email, lead.phone, lead.source]
+          .map(normalize)
+          .join(" ");
+
+        return haystack.includes(normalizedQuery);
+      })
+      .slice();
+
+    if (sortBy === "newest") {
+      nextLeads.sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() -
+          new Date(left.createdAt).getTime(),
+      );
+    }
+
+    if (sortBy === "oldest") {
+      nextLeads.sort(
+        (left, right) =>
+          new Date(left.createdAt).getTime() -
+          new Date(right.createdAt).getTime(),
+      );
+    }
+
+    if (sortBy === "nameAsc") {
+      nextLeads.sort((left, right) =>
+        normalize(left.name).localeCompare(normalize(right.name)),
+      );
+    }
+
+    if (sortBy === "nameDesc") {
+      nextLeads.sort((left, right) =>
+        normalize(right.name).localeCompare(normalize(left.name)),
+      );
+    }
+
+    return nextLeads;
+  }, [activeStatus, leads, query, sortBy]);
+
+  const totalCount = leads.length;
 
   return (
-    <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
-      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead className="bg-gray-50 dark:bg-gray-700">
-          <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-              Name
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-              Contact
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-              Source
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-              Status
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-              Created
-            </th>
-            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-          {leads.map((lead) => (
-            <tr
-              key={lead._id}
-              className="hover:bg-gray-50 dark:hover:bg-gray-700"
+    <section className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+            Pipeline
+          </p>
+          <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+            Lead list
+          </h3>
+          <p className="mt-2 text-sm text-slate-600">
+            {filteredLeads.length} of {totalCount} leads shown
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <label className="text-slate-500" htmlFor="lead-sort">
+            Sort by
+          </label>
+          <select
+            id="lead-sort"
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value)}
+            className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-slate-800 focus:ring-4 focus:ring-slate-300/40"
+          >
+            {Object.entries(sortOptions).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search by name, email, phone, or source"
+          className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-800 outline-none transition focus:border-slate-800 focus:ring-4 focus:ring-slate-300/40"
+        />
+
+        <div className="flex flex-wrap gap-2">
+          {statusOptions.map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setActiveStatus(status)}
+              className={`h-10 rounded-xl px-3 text-sm font-semibold transition ${
+                activeStatus === status
+                  ? "bg-slate-900 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+              }`}
             >
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="text-sm font-medium text-gray-900 dark:text-white">
-                  {lead.name}
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  {lead.email}
-                </div>
-                {lead.phone && (
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
-                    {lead.phone}
-                  </div>
-                )}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
-                  {lead.source}
-                </span>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <select
-                  value={lead.status}
-                  onChange={(e) => onStatusChange(lead._id, e.target.value)}
-                  className={`text-sm rounded-full px-3 py-1 font-semibold ${statusColors[lead.status]}`}
-                >
-                  <option value="New">New</option>
-                  <option value="Contacted">Contacted</option>
-                  <option value="Qualified">Qualified</option>
-                  <option value="Converted">Converted</option>
-                  <option value="Lost">Lost</option>
-                </select>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                {new Date(lead.createdAt).toLocaleDateString()}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button
-                  onClick={() => onDelete(lead._id)}
-                  className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
+              {status}
+            </button>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="mt-8 flex min-h-52 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
+          <div className="flex flex-col items-center gap-2 text-slate-500">
+            <Loading size="lg" />
+            <p className="text-sm">Loading leads...</p>
+          </div>
+        </div>
+      ) : error ? (
+        <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-800">
+          <p className="font-semibold">Could not load leads</p>
+          <p className="mt-1 text-sm">{error}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-3 inline-flex h-10 items-center justify-center rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white transition hover:bg-rose-700"
+          >
+            Try again
+          </button>
+        </div>
+      ) : filteredLeads.length === 0 ? (
+        <div className="mt-8 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center">
+          <p className="text-base font-semibold text-slate-700">
+            No leads found
+          </p>
+          <p className="mt-2 text-sm text-slate-500">
+            Try adjusting filters or create a new lead to get started.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredLeads.map((lead) => (
+            <LeadCard
+              key={lead._id}
+              lead={lead}
+              onStatusChange={onStatusChange}
+              onDelete={onDelete}
+              onView={onView}
+            />
+          ))}
+        </div>
+      )}
+    </section>
   );
 };
 
