@@ -15,8 +15,10 @@ const options = {
     },
     servers: [
       {
-        url: "http://localhost:5000",
-        description: "Development server",
+        url:
+          process.env.NODE_ENV === "production"
+            ? "https://future-fs-02-gmv4.onrender.com"
+            : "http://localhost:5000",
       },
     ],
     components: {
@@ -28,13 +30,9 @@ const options = {
         },
       },
     },
-    security: [
-      {
-        bearerAuth: [],
-      },
-    ],
+    security: [{ bearerAuth: [] }],
   },
-  apis: ["./routes/*.js", "./models/*.js"],
+  apis: ["./**/*.js"],
 };
 
 const swaggerSpec = swaggerJSDoc(options);
@@ -47,5 +45,5 @@ export const swaggerDocs = (app, port) => {
     res.send(swaggerSpec);
   });
 
-  console.log(`📄 Swagger docs available at http://localhost:${port}/api-docs`);
+  console.log(`📄 Swagger docs available at /api-docs`);
 };
