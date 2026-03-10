@@ -5,6 +5,7 @@ import {
   fetchUserApi as fetchUserApi,
 } from "../services/api";
 import { AuthContext } from "../hooks/authContextHooks";
+import Loading from "../components/Ui/Loading";
 
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem("token"));
@@ -12,7 +13,13 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(!!token);
 
   useEffect(() => {
-    if (!token) return setLoading(false);
+    if (!token) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
 
     const fetchUser = async () => {
       try {
@@ -81,7 +88,18 @@ export const AuthProvider = ({ children }) => {
     [user, token],
   );
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,#dbeafe_0%,transparent_32%),radial-gradient(circle_at_bottom_right,#fde68a_0%,transparent_25%),linear-gradient(180deg,#f8fafc_0%,#eef4ff_52%,#f8fafc_100%)]">
+        <div className="flex flex-col items-center gap-4 rounded-3xl border border-white/70 bg-white/80 px-8 py-7 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.35)] backdrop-blur">
+          <Loading size="lg" />
+          <p className="text-sm font-medium text-slate-600">
+            Restoring your workspace...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -7,6 +7,7 @@ import Layout from "../components/Layout/Layout";
 
 import Dashboard from "../pages/Dashboard";
 import Leads from "../pages/Leads";
+import Settings from "../pages/Settings";
 
 export default function AppRoutes() {
   return (
@@ -25,6 +26,7 @@ export default function AppRoutes() {
       >
         <Route index element={<Dashboard />} />
         <Route path="leads" element={<Leads />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   );
