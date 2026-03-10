@@ -1,6 +1,7 @@
 import Lead from "../models/Lead.js";
 import { validationResult } from "express-validator";
 import { sendError, sendValidationError } from "../utils/apiResponse.js";
+import mongoose from "mongoose";
 
 const STATUS_TRANSITIONS = {
   New: ["Contacted", "Qualified", "Lost"],
@@ -431,37 +432,51 @@ export const deleteLead = async (req, res) => {
 
 export const getLeadAggregates = async (req, res) => {
   try {
+    const userId = new mongoose.Types.ObjectId(req.user);
     const today = normalizeDateOnly(new Date());
-    const [statusAgg, sourceAgg, total, overdueFollowUps, totalNotes, upcomingFollowUps, recentLeads] = await Promise.all([
+    const [
+      statusAgg,
+      sourceAgg,
+      total,
+      overdueFollowUps,
+      totalNotes,
+      upcomingFollowUps,
+      recentLeads,
+    ] = await Promise.all([
       Lead.aggregate([
-        { $match: { createdBy: req.user } },
+        { $match: { createdBy: userId } },
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
       Lead.aggregate([
-        { $match: { createdBy: req.user } },
-        { $group: { _id: { $ifNull: ["$source", "Other"] }, count: { $sum: 1 } } },
+        { $match: { createdBy: userId } },
+        {
+          $group: {
+            _id: { $ifNull: ["$source", "Other"] },
+            count: { $sum: 1 },
+          },
+        },
         { $sort: { count: -1, _id: 1 } },
         { $limit: 4 },
       ]),
-      Lead.countDocuments({ createdBy: req.user }),
+      Lead.countDocuments({ createdBy: userId }),
       Lead.countDocuments({
-        createdBy: req.user,
+        createdBy: userId,
         followUpdate: { $lt: today },
       }),
       Lead.aggregate([
-        { $match: { createdBy: req.user } },
+        { $match: { createdBy: userId } },
         { $project: { noteCount: { $size: { $ifNull: ["$notes", []] } } } },
         { $group: { _id: null, totalNotes: { $sum: "$noteCount" } } },
       ]),
       Lead.find({
-        createdBy: req.user,
+        createdBy: userId,
         followUpdate: { $exists: true, $ne: null },
       })
         .sort({ followUpdate: 1, _id: 1 })
         .select("name email status source followUpdate")
         .limit(5)
         .lean(),
-      Lead.find({ createdBy: req.user })
+      Lead.find({ createdBy: userId })
         .sort({ createdAt: -1, _id: -1 })
         .select("name email status source createdAt notes")
         .limit(6)
@@ -485,7 +500,9 @@ export const getLeadAggregates = async (req, res) => {
       (byStatus.Qualified || 0);
     const convertedCount = byStatus.Converted || 0;
     const lostCount = byStatus.Lost || 0;
-    const conversionRate = total ? Math.round((convertedCount / total) * 100) : 0;
+    const conversionRate = total
+      ? Math.round((convertedCount / total) * 100)
+      : 0;
     const topSources = sourceAgg.map((entry) => ({
       source: entry._id,
       count: entry.count,
