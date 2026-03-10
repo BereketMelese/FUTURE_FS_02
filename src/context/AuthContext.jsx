@@ -1,29 +1,26 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
-  fetchUserApi,
   signIn as loginApi,
-  signUp as registerApi,
+  signUp as signUpApi,
+  fetchUserApi as fetchUserApi,
 } from "../services/api";
 import { AuthContext } from "../hooks/authContextHooks";
 
 export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(localStorage.getItem("token"));
-  const [user, setUser] = useState(
-    JSON.parse(localStorage.getItem("user")) || null,
-  );
-  const [loading, setLoading] = useState(() => !token);
+  const [token, setToken] = useState(() => localStorage.getItem("token"));
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(!!token);
 
   useEffect(() => {
     if (!token) return setLoading(false);
 
     const fetchUser = async () => {
       try {
-        const res = await fetchUserApi();
+        const res = await fetchUserApi(token);
         setUser(res.data.user);
       } catch {
         setToken(null);
         localStorage.removeItem("token");
-        localStorage.removeItem("user");
       } finally {
         setLoading(false);
       }
@@ -36,7 +33,6 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await loginApi({ email, password });
       localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
       setToken(res.data.token);
       setUser(res.data.user);
       return { success: true };
@@ -51,9 +47,8 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (username, email, password) => {
     try {
-      const res = await registerApi({ username, email, password });
+      const res = await signUpApi({ username, email, password });
       localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
       setToken(res.data.token);
       setUser(res.data.user);
       return { success: true };
@@ -70,23 +65,23 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem("token");
-    localStorage.removeItem("user");
     setToken(null);
     setUser(null);
   };
 
-  const value = {
-    user,
-    token,
-    login,
-    register,
-    logout,
-    isAuthenticated: !!token && !!user,
-  };
-
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      user,
+      token,
+      login,
+      register,
+      logout,
+      isAuthenticated: !!token && !!user,
+    }),
+    [user, token],
   );
+
+  if (loading) return <div>Loading...</div>;
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

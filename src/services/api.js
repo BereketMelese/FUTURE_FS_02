@@ -22,7 +22,7 @@ export const fetchLeads = () => API.get("/leads");
 export const fetchLead = (id) => API.get(`/leads/${id}`);
 export const createLead = (formData) => API.post("/leads", formData);
 export const updateLeadStatus = (id, status) =>
-  API.put(`/leads/${id}/status`, { status });
+  API.put(`/leads/${id}`, { status });
 export const addNote = (id, note) => API.post(`/leads/${id}/notes`, { note });
 export const deleteLead = (id) => API.delete(`/leads/${id}`);
 

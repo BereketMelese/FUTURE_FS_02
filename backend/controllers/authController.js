@@ -92,7 +92,7 @@ const login = async (req, res) => {
       expiresIn: "1h",
     });
 
-    res.json({
+    res.status(200).json({
       success: true,
       token,
       user: {
